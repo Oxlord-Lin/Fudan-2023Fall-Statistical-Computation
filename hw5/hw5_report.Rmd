@@ -1,0 +1,355 @@
+---
+title: "统计计算 Homework 5"
+author: "林子开 21307110161"
+date: "2023年11月"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: 
+      collapsed: false
+      smooth_scroll: false
+      number_sections: true
+---
+
+```{=html}
+<style type="text/css">
+h1.title{
+  font-size: 38px;
+  color: DarkRed;
+  text-align: center;
+}
+h4.author{
+  font-size: 18px;
+  color: DarkRed;
+  text-align: center;
+}
+h4.date {
+  font-size: 18px;
+  font-family: "Times New Roman", Times, serif;
+  color: DarkBlue;
+  text-align: center;
+}
+
+</style>
+```
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, cache = TRUE, message = TRUE, fig.align = "center")
+```
+
+# Exercise 6.1
+
+First, define a function which calculates the k-th trimmed means for random samples x.
+
+```{r}
+trimed.means <- function(x,k){
+  x <- sort(x)
+  return( sum(x[(k+1):(n-k)])/(n-2*k) )
+}
+```
+
+Here comes the experiment. Repeat the calculation for m times and get an estimate of MSE for different k's.
+
+```{r}
+m <- 100 # replicating times
+n <- 20 # sample size
+set.seed(123)
+smp <- matrix(rcauchy(n*m),nrow=n)
+mse <- numeric(9)
+for(k in 1:9){
+  tmeans <- numeric(m)
+  for(j in 1:m){
+    tmeans[j] <-trimed.means(smp[,j],k) 
+  }
+  mse[k] = mean((tmeans-mean(tmeans))^2)
+}
+```
+
+Now summarize the estimates of MSE in a table. Moreover, give a plot.
+
+```{r}
+k = 1:9
+rbind(k,mse)
+plot(k,mse,type='l',lwd=2,main='MSE of the k-th trimmed means for standard Cauchy')
+```
+
+# Exercise 6.4
+
+First, generate the samples with $\mu=1$.
+
+```{r}
+m <- 10000 # constructing the CI for m times
+n <- 1000 # sample size
+set.seed(233)
+miu.true = 1
+smp = matrix(rlnorm(n*m,meanlog = miu.true),nrow = n)
+```
+
+Since $\mu=\mathbb{E}[\log(X)]$, we need to transfer $X$ to $\log(X)$ and then calculate $\overline{\log(X)}$ as well as $\hat{se}(\overline{\log(X)})$
+
+```{r}
+smp.log = log(smp)
+miu = apply(smp.log,2,mean) # average
+sd = apply(smp.log,2,sd) # estimate of standard deviation
+se = sd/sqrt(n) # estimate of standard error
+```
+
+Notice that $\log(X)\sim \mathcal{N}(\mu,\sigma^2)$ and $\overline{\log(X)} \sim \mathcal{N}(\mu,\frac{\sigma^2}{n})$, we can construct the CI as follows:
+
+```{r}
+z = qnorm(0.975) 
+# construct an 95% CI for mu
+CI.low = miu - z*se
+CI.high = miu + z*se
+CI = cbind(CI.low,CI.high)
+```
+
+Finally, use Monte Carlo method to obtain an empirical estimate of the confidence level and verify my construction of the 95% CI for parameter $\mu$.
+
+```{r}
+# find the empirical confidence level
+confidence_level <- sum(CI.low<miu.true & miu.true<CI.high)/m 
+print(confidence_level) # 0.9515
+```
+
+# Exercise 6.5
+
+First, generate the random samples from $\chi^2(2)$ and give a symmetric t-interval to estimate the mean.
+
+```{r}
+m = 10000 # repeating times
+n = 20 # sample size
+set.seed(233)
+smp = matrix(rchisq(n*m,df=2),nrow = n) # generate samples
+means = apply(smp,2,mean) # calculate the average
+sd = apply(smp,2,sd) # the estimate of standard deviation
+se = sd/sqrt(n) # the estimate of standard error
+z = qt(0.975,df=n-1) # quantile of t distribution with degree of freedom n-1
+CI.low = means - z*se
+CI.high =  means + z*se
+CI = cbind(CI.low,CI.high)
+```
+
+Now estimate the coverage probability using Monte Carlo method. Notice that if $X\sim \chi^2(x)$, then $\mathbb{E}[X]=2$.
+
+```{r}
+coverage_prob = sum(CI.low<2 & 2<CI.high)/m
+print(coverage_prob) # 0.9161
+```
+
+Notice that in Example 6.4 and Example 6.6, where we calculate the CI for variance with samples from $\chi^2(2)$. We only got an estimate of 77.3% for the coverage probability of variance, far away from 95% coverage under normality. But here we've got an estimate of 91.61% for the coverage probability of mean, which is much closer to 95% under normality. Therefore we can conclude that the t-interval is more **robust** to departures from normality than the interval for variance.
+
+# Exercise 6.9
+
+First, define a function which calculates an estimate for Gini ratio of sample X.
+
+```{r}
+G <- function(x.raw){ # 计算基尼系数
+  x = sort(x.raw) # turn x.raw into ordering statistics
+  n = length(x)
+  miu = mean(x)
+  G = (1/(n^2*miu)) * sum((2*(1:n)-n-1)*x)
+  return(G)
+}
+```
+
+## Gini ratio for lognormal distribution
+
+First, generate samples from standard lognormal and calculate the estimate of Gini ratios.
+
+```{r}
+m = 1000 # repeating times
+n = 1000 # sample size
+set.seed(233)
+smp = matrix(rlnorm(m*n),nrow=n) 
+G.lognormal = apply(smp,2,G) # calculate Gini ratio
+```
+
+The mean and median are
+
+```{r}
+G.lognormal.mean = mean(G.lognormal)
+G.lognormal.median = median(G.lognormal)
+rbind(c('mean','median'),c(G.lognormal.mean,G.lognormal.median))
+```
+
+The deciles are
+
+```{r}
+G.lognormal.deciles = quantile(G.lognormal, probs = seq(.1, .9, by = .1))
+print(G.lognormal.deciles)
+```
+
+And the histograms of the Gini ratio estimates are
+
+```{r}
+hist(G.lognormal, freq = F, main = "Density histograms of the Ginis ratio estimates of standard lognormal") # Create a histogram
+```
+
+## Gini ratio for uniform distribution
+
+First, generate samples from uniform distribution and calculate the estimate of Gini ratios.
+
+```{r}
+set.seed(233)
+smp = matrix(runif(m*n),nrow=n)
+G.uniform = apply(smp,2,G)
+```
+
+The mean and median are
+
+```{r}
+G.uniform.mean = mean(G.uniform)
+G.uniform.median = median(G.uniform)
+rbind(c('mean','median'),c(G.uniform.mean,G.uniform.median))
+```
+
+The deciles are
+
+```{r}
+G.uniform.deciles = quantile(G.uniform, probs = seq(.1, .9, by = .1))
+print(G.uniform.deciles)
+```
+
+And the histograms of the Gini ratio estimates is
+
+```{r}
+hist(G.uniform, freq = FALSE, main = "Density histograms of the Ginis ratio estimates of uniform distribution") # Create a histogram
+```
+
+## Gini ratio for Bernoulli distribution
+
+First, generate samples from Bernoulli(0.1) and calculate the estimates of Gini ratios.
+
+```{r}
+set.seed(233)
+smp = matrix(rbinom(m*n,size=1,prob=0.1),nrow=n)
+G.Bernoulli = apply(smp,2,G)
+```
+
+The mean and median are
+
+```{r}
+G.Bernoulli.mean = mean(G.Bernoulli)
+G.Bernoulli.median = median(G.Bernoulli)
+rbind(c('mean','median'),c(G.Bernoulli.mean,G.Bernoulli.median))
+```
+
+The deciles are
+
+```{r}
+G.Bernoulli.deciles = quantile(G.Bernoulli, probs = seq(.1, .9, by = .1))
+print(G.Bernoulli.deciles)
+```
+
+And the histograms of the estimates for Gini ratios is
+
+```{r}
+hist(G.Bernoulli, freq = FALSE, main = "Density histograms of the Ginis ratio estimates of Bernoulli(0.1)") # Create a histogram
+```
+
+# Exercise 6.10
+
+According to [Wikipedia](https://en.wikipedia.org/wiki/Gini_coefficient#cite_ref-LNdist_29-1), the Gini ratio $\gamma=\mathbb{E}[G]$ of lognormal distribution is $2\Phi\left(\frac{\sigma}{\sqrt{2}}\right)-1$. Since the parameter $\sigma$ is unknown, we need to construct CI's for $\sigma$ before constructing that for $G$.
+
+We generate samples from lognormal and construct CI's for $\sigma$ as follows:
+```{r}
+sigma.true = 5 # the real sigma
+G.true = 2*pnorm(sigma.true/sqrt(2)) - 1 
+set.seed(233)
+# sampling
+smp = matrix(rlnorm(m*n,meanlog=0,sdlog=sigma.true),nrow=n)
+smp.log = log(smp)
+# calculate the sample variance for each column
+S2 = apply(smp.log,2,var) # sample variance
+# construct a 95% CI for sigma
+sigma.CI.low = numeric(m)
+sigma.CI.high = sqrt((n-1)*S2/qchisq(.05,df=n-1))
+sigma.CI = cbind(sigma.CI.low,sigma.CI.high)
+```
+
+Based on the relation between $\sigma$ and $G$, we can construct an approximately 95% CI for Gini ratio:
+```{r}
+# construct a 95% CI for G.true
+G.CI.low = numeric(m)
+G.CI.high = 2*pnorm(sigma.CI.high/sqrt(2))-1
+G.CI = cbind(G.CI.low,G.CI.high)
+```
+
+Using Monte Carlo method to estimate the empirical coverage rate:
+```{r}
+confidence_level = sum(G.CI.low<G.true & G.true<G.CI.high)/m
+print(confidence_level) #  0.951
+```
+
+# Proof
+
+First I shall introduce some notation. Let $X=(x_1,x_2,\cdots,x_n)^\top$ and $\vec{\mu}=(\mu,\mu,\cdots,\mu)^\top,\,\vec{\mu}\in\mathbb{R}^n$. Since $x_i\sim N(\mu,\sigma^2)$ and $x_i$ are i.i.d., then we have: $X \sim N(\vec{\mu},\sigma^2 I)$.
+
+First, make a transformation: \begin{align*}
+&\sum_{i=1}^{n}(x_i-\bar{x})^2/\sigma^2 \\
+& = \frac{\left(\sum_{i=1}^{n}x_i^2-n\bar{x}^2\right)}{\sigma^2} \\
+& = \sum_{i=1}^{n}\left(\frac{x_i}{\sigma}\right)^2-n\left(\frac{\bar{x}}{\sigma}\right)^2
+\end{align*}
+
+Now let $Y = \frac{X}{\sigma}$, then we have $y_i \sim N(\frac{\mu}{\sigma},1)$, and moreover $$
+Y \sim N\left(\frac{\vec{\mu}}{\sigma},I\right)
+$$
+
+Therefore \begin{align*}
+&  \sum_{i=1}^{n}\left(\frac{x_i}{\sigma}\right)^2-n\left(\frac{\bar{x}}{\sigma}\right)^2 \\
+& =\sum_{i=1}^{n}y_i^2 - n(\bar{y})^2\\
+\end{align*}
+
+Here comes the most tricky part. We should design an **orthogonal** matrix $Q$ as $$
+Q = \begin{bmatrix}
+\quad q_1^\top \quad\\
+\quad q_2^\top \quad\\
+\quad\vdots\quad \\
+\quad q_n^\top \quad
+\end{bmatrix}
+$$ where $$
+q_n^\top = \left[\frac{1}{\sqrt{n}},\frac{1}{\sqrt{n}},\cdots,\frac{1}{\sqrt{n}} \right]$$
+
+Now make a transformation $$
+z_i=q_i^\top Y = \sum_{j=1}^{n}q_{ij}y_i
+$$ for simplicity, we can alternatively write $Z=QY$. Notice that 
+$$
+z_n = \frac{y_1+y_2+\cdots+y_n}{\sqrt{n}} = \sqrt{n}\bar{y}
+$$
+
+
+Since $Q$ is **orthogonal**, i.e., $Q^\top Q=I$, then we can derive the distribution of Z 
+$$
+Z \sim N\left(\frac{Q\vec{\mu}}{\sigma},I\right) 
+$$
+
+
+Since the 2-norm is unchanged under orthogonal transformation, we also have
+\begin{align*}
+&||Z||_2 = ||QY||_2 = ||Y||_2 \\
+\Rightarrow &\sum_i z_i^2 = \sum_i y_i^2
+\end{align*}
+
+Therefore 
+\begin{align*}
+& \sum_{i=1}^{n}y_i^2 - n(\bar{y})^2\\
+& =\sum_{i=1}^{n}z_i^2 - z_n^2 \\
+& =\sum_{i=1}^{n-1}z_i^2
+\end{align*}
+
+When $i\ne n$, we can prove that $\mathbb{E}[z_i]=0$  
+\begin{align*}
+\mathbb{E}[z_i] &= \mathbb{E}[q_i^\top Y] \\
+&= \mathbb{E}\left[\sum_{j=1}^{n}q_{ij}y_i\right] \\
+&= \sum_{j=1}^{n}q_{ij}\mathbb{E}[y_i] \\
+&= \sum_{j=1}^{n}q_{ij}\frac{\mu}{\sigma} \\
+&= \sum_{j=1}^{n}q_{ij}\frac{1}{\sqrt{n}}\sqrt{n}\frac{\mu}{\sigma} \\
+&=0
+\end{align*} The last equation holds because $q_i^\top q_n =0,\, i\ne n$. Now we have proven that $$z_i \sim N(0,1),\,i\ne n$$ Since $\sum_{i=1}^{n}(x_i-\bar{x})^2/\sigma^2 = \sum_{i=1}^{n-1}z_i^2$, according to the definition of Chi-square distribution, we can conclude that $$
+\sum_{i=1}^{n}(x_i-\bar{x})^2/\sigma^2 \sim \chi^2(n-1)
+$$
+
+Notice that $\bar{x} = \sigma\bar{y}=\frac{\sigma z_n}{\sqrt{n}}$, i.e., $\bar{x}$ is only determined by $z_n$, whereas $\sum_{i=1}^{n}(x_i-\bar{x})^2/\sigma^2$ is only determined by $z_1,z_2,\cdots,z_{n-1}$. Since $Z \sim N\left(\frac{Q\vec{\mu}}{\sigma},I\right)$, $\rho_{ij}=0,\, i\ne j$, i.e., $z_i$ and $z_j$ are independent if $i\ne j$, we draw the conclusion that $\sum_{i=1}^{n}(x_i-\bar{x})^2/\sigma^2$ is independent with $\bar{x}$.
+
+<p align="right">$\blacksquare$</p>

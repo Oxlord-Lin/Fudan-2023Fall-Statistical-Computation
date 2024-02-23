@@ -1,0 +1,359 @@
+---
+title: "统计计算 Homework-9 报告"
+author: "林子开 21307110161"
+date: "2023年12月9日"
+output: 
+  html_document:
+    theme: readable
+    toc: true
+    toc_depth: 2
+    toc_float: 
+      collapsed: false
+      smooth_scroll: false
+      number_sections: true
+---
+
+```{=html}
+<style type="text/css">
+h1.title{
+  font-size: 38px;
+  color: DarkBlue;
+  text-align: center;
+}
+h4.author{
+  font-size: 18px;
+  color: DarkBlue;
+  text-align: center;
+}
+h4.date {
+  font-size: 18px;
+  font-family: "Times New Roman", Times, serif;
+  color: DarkBlue;
+  text-align: center;
+}
+
+</style>
+```
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, cache = TRUE, message = TRUE, fig.align = "center")
+```
+
+```{r,warning=FALSE,include=FALSE}
+# 导入所有需要的包，但不进行展示
+library(ggplot2)
+library(plotly)
+library(dplyr)
+library(magrittr)
+library(cowplot)
+library(pROC)
+library(caret)
+library(tidyr)
+library(xtable)
+```
+
+# Exercise 9.1
+
+```{r}
+# The following function evaluates the Rayleigh density
+f <- function(x,sigma=2){
+  if (any(x<0)) return(0)
+  stopifnot(sigma > 0)
+  return((x / sigma^2) * exp( -x^2 / (2*sigma^2) ) ) 
+}
+
+par(mfrow=c(2,1))
+m <- 10000 # length of the chain
+ks = numeric(2) # used to store the reject rates
+sigmas = c(2,4)
+
+for(p in 1:2){ # try different sigma in Rayleigh dist
+  set.seed(123456)
+  sigma = sigmas[p]
+  x <- numeric(m)
+  x[1] <- rchisq(1,df=1)
+  k <- 0 # used to count the rejecting times
+  u <- runif(m) # used in the accept/reject decision
+  
+  for(i in 2:m){
+    xt <- x[i-1]
+    y <- rchisq(1,df=xt) # proposal by Chi-square dist
+    num <- f(y,sigma) * dchisq(xt,df=y)
+    den <- f(xt,sigma) * dchisq(y,df=xt)
+    if(u[i] <= num/den){ # accept 
+      x[i] <- y 
+      } 
+    else{ # reject
+      x[i] <- xt
+      k <- k+1
+    }
+  }
+  ks[p] = (k/m) # the reject rates
+  
+  index <- 5000:5500
+  x1 <- x[index]
+  plot(index,x1,type='l',main=paste('sigma=',sigma),ylab='x')
+}
+
+Table = as.data.frame(matrix(ks,nrow=1))
+colnames(Table) <- c(paste('sigma=',2),paste('sigma=',4))
+rownames(Table) <- c('reject rates')
+print(Table)
+```
+
+从图中可以看出，$\sigma=2$时，与$\sigma=4$相比，马尔科夫链中出现了**更多水平的直线**。从拒绝率上看，$\sigma=2$时的拒绝率为0.528，而$\sigma=4$时的拒绝率为0.4058，说明$\sigma=2$时的**拒绝率更高，算法的效率更低**。
+
+# Exercise 9.2
+
+```{r}
+# The following function evaluates the Rayleight density
+f <- function(x,sigma=4){
+  if (any(x<0)) return(0)
+  stopifnot(sigma > 0)
+  return((x / sigma^2) * exp( -x^2 / (2*sigma^2) ) ) 
+}
+
+par(mfrow=c(2,1))
+m <- 10000
+sigma <- 4
+proposals = c('Chisquare','Gamma')
+ks = numeric(2)
+
+for(p in 1:2){
+  set.seed(123456)
+  proposal = proposals[p]
+  x <- numeric(m)
+  x[1] <- rchisq(1,df=1)
+  k <- 0 # used for counting the rejecting times
+  u <- runif(m)
+  
+  for(i in 2:m){
+    xt <- x[i-1]
+    if(proposal == 'Chisquare'){
+      y <- rchisq(1,df=xt) # proposal by Chi-square
+    }
+    else{
+      y <- rgamma(1,shape=xt,rate=1) # proposal by Gamma
+    }
+    num <- f(y,sigma) * dchisq(xt,df=y)
+    den <- f(xt,sigma) * dchisq(y,df=xt)
+    if(u[i] <= num/den){ # accepted 
+      x[i] <- y 
+    } 
+    else{ # rejected
+      x[i] <- xt
+      k <- k+1
+    }
+  }
+  ks[p] = (k/m) # the reject rates
+  
+  index <- 5000:5500
+  x1 <- x[index]
+  plot(index,x1,type='l',main=paste('proposal by ',proposal),ylab='x')
+}
+
+Table = as.data.frame(matrix(ks,nrow=1))
+colnames(Table) <- c('Chisquare','Gamma')
+rownames(Table) <- c('reject rates')
+print(Table)
+```
+
+从图中可以看出，使用卡方分布作为proposal时，与使用Gamma分布作为proposal相比，马尔科夫链中出现了**更多水平的直线**。从拒绝率上看，使用卡方分布作为proposal时的拒绝率为0.4058，而使用Gamma分布时的拒绝率为0.2988，说明使用Gamma分布作为proposal时**拒绝率更低，算法的效率更高**。
+
+# Exercise 9.3
+
+由于标准卡方分布的定义域为$[-\infty,\infty]$，且本题要求使用**Metropolis-Hastings sampler**产生样本，因此我选用的proposal为t分布。考虑到t分布的自由度必须大于0，且自由度太接近0时，容易发生溢出，于是我对proposal进行了改进，$g(\cdot| X_t) = t(|X_t|+1)$，其中$|X_t|+1$是t分布的自由度。
+
+```{r}
+set.seed(123)
+
+m <- 10000
+x <- numeric(m)
+x[1] <- rt(1,df=10) # using student-t distribution as proposal
+k <- 0
+u <- runif(m)
+
+for(i in 2:m){
+  xt <- x[i-1]
+  y <- rt(1,df=abs(xt)+1) # proposal by t distribution
+  num <- dcauchy(y) * dt(xt,df=abs(y)+1)
+  den <- dcauchy(xt) * dt(y,df=abs(xt)+1)
+  if(u[i] <= num/den){ # accepted 
+    x[i] <- y 
+  } 
+  else{ # rejected
+    x[i] <- xt
+    k <- k+1
+  }
+}
+```
+
+以下为用M-H sampler得到的样本的十分位数和标准卡方分布的十分位数的对比，可以发现，由马尔科夫链生成的样本的十分位数，整体上比标准卡方分布十分位数**偏大**一些。可能是由于proposal选取不合适所造成的，也可能是10000步后马尔科夫链还没收敛所导致的。
+
+```{r}
+index <- 1001:m # discard the first 1000 of the chain
+x1 <- x[index]
+
+deciles.MC <- quantile(x1, probs=seq(0.1,0.9, by=0.1))
+deciles.standard <- qcauchy(seq(0.1,0.9, by=0.1))
+comparison = as.data.frame(rbind(deciles.standard,deciles.MC))
+rownames(comparison) <- c('standard','MC')
+print(comparison)
+
+```
+
+# Exercise 9.4
+
+```{r}
+# the following function evaluate the Laplace density
+f <- function(x){
+  return( 0.5 * exp(-abs(x)) )
+}
+
+# the following function is the random walk Metropolis sampler
+RandomWalk.Metropolis <- function(sigma,x0,N){
+  x <- numeric(N)
+  x[1]  <- x0
+  u = runif(N)
+  k <- 0
+  for(i in 2:N){
+    y <- rnorm(1,x[i-1],sigma) # proposal by normal distribution
+    if(u[i] <= f(y)/f(x[i-1])){
+      x[i] <- y # accepted
+    }
+    else{ # rejected
+      x[i] <- x[i-1]
+      k <- k + 1
+    }
+  }
+  return(list(x=x,k=k))
+}
+
+# compare the chain and acceptance rates using different variances
+N <- 5000
+sigma <- c(.05, .5, 2, 16)
+x0 <- 0
+set.seed(2023)
+rw1 <- RandomWalk.Metropolis(sigma[1],x0,N)
+rw2 <- RandomWalk.Metropolis(sigma[2],x0,N)
+rw3 <- RandomWalk.Metropolis(sigma[3],x0,N)
+rw4 <- RandomWalk.Metropolis(sigma[4],x0,N)
+
+# compare the chain
+par(mfrow=c(2,2))
+rw <- cbind(rw1$x,rw2$x,rw3$x,rw4$x)
+for(j in 1:4){
+  plot(rw[,j],type='l',
+  xlab=bquote(sigma == .(round(sigma[j],3))),
+  ylab='X',ylim=range(rw[,j]) )
+}
+```
+
+可以看出，当$\sigma=0.05$时，马尔科夫链在5000步前并未收敛；当$\sigma=0.5$和$\sigma=2$时，马尔科夫链都能较快地收敛；当$\sigma=16$时，可以发现图中有较多的水平直线，说明有很多样本被拒绝了，尽管此时算法收敛，但效率比较低。
+
+```{r}
+# compare the histogram
+par(mfrow=c(2,2))
+xx <- seq(-10,10,by=0.01)
+yy <- f(xx)
+for(j in 1:4){
+  hist(rw[,j],breaks=100,freq = F,ylim = c(0,0.5),
+       xlab=bquote(sigma == .(round(sigma[j],3))),main='Histogram')
+  lines(xx,yy,col='red',lwd=1.5)
+}
+```
+可以看出，$\sigma=0.05$时，样本的经验分布和标准拉普拉斯分布并不吻合，说明算法并未收敛；当$\sigma=0.5$和$\sigma=2$时，样本的经验分布和标准拉普拉斯分布吻合，说明算法收敛；当$\sigma=16$时，样本的经验分布与标准拉普拉斯分布大致吻合，但不如$\sigma=0.5$和$\sigma=2$的吻合程度高，这也反映出算法的效率比较低。
+
+```{r}
+# compare the acceptance rates, the suitable interval is [0.15,0.5]
+Table = 1-c(rw1$k,rw2$k,rw3$k,rw4$k)/N
+Table = as.data.frame(matrix(Table,nrow=1))
+rownames(Table) = c('acceptance rates')
+colnames(Table) = c('sigma=0.05','sigma=0.5','sigma=2','sigma=16')
+Table
+```
+可以看出，随着proposal中的$\sigma$的下降，接受率逐渐下降。按照接受率在$[0.5,0.85]$之间的标准，$\sigma=0.5$与$\sigma=2$是比较合适的。
+
+# Exercise 9.5
+```{r}
+set.seed(2023)
+
+b <- 0.2 # actual value of beta
+m <- 5000 # length of the chain
+burn <- 1000 # burn-in time
+days <- 250 
+x <- numeric(m) # the chain
+
+# generate the observed frequencies of winners
+i <- sample(1:5,size=days, replace=TRUE, prob=c(1,1-b,1-2*b,2*b,b))
+win <- tabulate(i)
+
+# the following function prob computes the target density
+# (without the constant)
+prob <- function(y,win){
+  if(y < 0 || y >= 0.5)
+    return(0)
+  return( (1/3)^win[1] *
+    ((1-y)/3)^win[2] * ((1-2*y)/3)^win[3] *
+      ((2*y)/3)^win[4] * (y/3)^win[5] )
+}
+
+u <- runif(m) # for accept/reject step
+
+X = matrix(numeric(4*m),ncol=4)
+reject.rates = numeric(4)
+mean.xb = numeric(4)
+ws = c(0.01,0.05,0.1,0.25)
+for(p in 1:4){
+  set.seed(2023)
+  w = ws[p]
+  k <- 0
+  v <- runif(m,-w,w) # proposal distribution
+  x[1] <- 0.2
+  for(i in 2:m){
+    y <- x[i-1] + v[i]
+    if (u[i] <= prob(y,win) / prob(x[i-1],win)){ # accept
+      x[i] <- y} 
+    else{
+        x[i] <- x[i-1] # reject 
+        k <- k+1
+    }
+  }
+  X[,p] = x
+  xb <- x[-(1:burn)]
+  reject.rates[p] = k/m
+  mean.xb[p] = mean(xb)
+}
+
+# plot the chain 
+par(mfrow=c(2,2))
+for(p in 1:4){
+  x = X[,p]
+  plot(x,type='l',main=paste('w =',ws[p]))
+  abline(h=b,v=burn,lty=3,col='red',lwd=2)
+}
+```
+当$w=0.01$时，马尔可夫似乎无法在5000步迭代之内收敛，说明太小的$w$可能导致收敛速度太慢。$w=0.05$与$w=0.1$时，马尔可夫链都能收敛。$w=0.25$时，马尔科夫链虽然能收敛，但出现了很多水平直线，说明拒绝率比较高。
+
+```{r}
+# plot the histogram
+par(mfrow=c(2,2))
+for(p in 1:4){
+  x = X[,p]
+  xb <- x[-(1:burn)]
+  hist(xb,freq=F,breaks =100,xlab=bquote(beta),ylab='X',main=paste('w =',ws[p]))
+  z <- seq(min(xb),max(xb),length=200)
+  lines(z,dnorm(z,mean(xb),sd(xb)))
+}
+```
+从频数直方图看，$w=.01, .05, .1$时，样本分布基本还是关于$\beta=.2$左右对称的，且概率密度最大的地方集中在$\beta=.2$附近，采样效果较好。但是，当$w=.25$时，分布比较凌乱，概率密度最大的地方也距离$\beta=.2$较远，采样效果并不好。
+
+```{r}
+# show the sample mean and reject rates
+Table = as.data.frame(rbind(mean.xb,reject.rates))
+colnames(Table) <- c('w=0.01','w=0.05','w=0.1','w=0.25')
+rownames(Table) <- c('sample mean ','reject rates ')
+Table
+
+```
+
+从平均值上看，$w$的改变，对$\beta$的估计值影响不是很大，整体上略微呈现出$|\hat{\beta}-\beta|$随$w$的增大而增大的趋势。另一方面，$w$对拒绝率的影响很大，拒绝率随$w$的增大而显著增加。按照拒绝率在$[0.15,0.5]$的标准，在本次实验所尝试的四个$w$中，$w=0.05$是最为合适的。

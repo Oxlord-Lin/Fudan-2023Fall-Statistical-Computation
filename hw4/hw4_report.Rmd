@@ -1,0 +1,206 @@
+---
+title: "统计计算 Homework4"
+author: "林子开"
+date: "2023-10-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Exercise 5.12
+Assume that $\frac{g(x)}{f(x)}$is upper bounded by $B$. Moreover, we suppose that $\theta$ is also bounded.
+
+The importance sampling estimator $\hat{\theta}^{IS}_f$ is a sample mean:
+
+\begin{align*}
+\hat{\theta}^{IS}_f = \frac{1}{n}\sum^n_{i=1}\frac{g(x_i)}{f(x_i)}\quad 
+\end{align*}
+
+where $x_i$ has the density function $f(x)$.
+
+
+And we have
+
+\begin{align*}
+
+\text{Var}(\hat{\theta}^{IS}_f) &= \frac{1}{n}\text{Var}\left(\frac{g(x)}{f(x)} \right)\\
+
+
+\text{Var}\left(\frac{g(x)}{f(x)} \right) &=  \text{E}_f \left\{ \left[\frac{g(x)}{f(x)} \right]^2\right\} - \left\{ \text{E}_f \left[\frac{g(x)}{f(x)} \right]\right\}^2 \\
+
+&= \int_A\frac{g^2(x)}{f^2(x)}f(x)\,\text{d}x - \theta^2\\
+&= \int_A\frac{g^2(x)}{f(x)}\,\text{d}x - \theta^2\\
+&\le B\int_A g(x)\, \text{d}x - \theta^2 \\ 
+& = B\theta - \theta^2
+
+
+\end{align*}
+
+
+Since $\text{Var}\left(\frac{g(x)}{f(x)} \right)$ is upper bounded, then the 
+$\text{Var}(\hat{\theta}^{IS}_f)$ is also upper bounded, i.e., finite.
+
+<p align="right">$\blacksquare$</p>
+
+## Exercise 5.13 & Exercise 5.14 (based on the same function)
+I choose 
+\begin{align*}
+f_1(x) &= \frac{2}{(x+1)^2}\\ f_2(x)&=\frac{2}{\sqrt{2\pi}}\exp\left\{-\frac{(x-1)^2}{2}\right\}
+\end{align*}
+both of which are density functions supported on $(1,\infty)$ and have similar shape as $g(x)$. The following is the graph of the three functions. 
+```{r}
+x = seq(1,10,by=0.1)
+g = x^2*exp(-x^2/2)/sqrt(2*pi)
+plot(x,g,type='l',col='black',ylim=c(0,1),lwd=2,main='the graph of function g, f1 and f2')
+f1 = 2/(x+1)^2
+lines(x,f1,lty=4,col='blue',lwd=2)
+f2 = 2*dnorm(x,mean=1,sd=1)
+lines(x,f2,lty=3,col='red',lwd=2)  
+legend('topright',legend=c('g','f1','f2'),col=c('black','blue','red'),lwd=c(2,2,2),lty=c(1,4,3))
+```
+
+To check which one is closer in shape to $g(x)$, I also plot the ratio of $g(x)/f_1(x)$ and $g(x)/f_2(x)$.
+
+```{r}
+plot(x,g/f1,type='l',col='blue',lwd=2,lty=4,main='ratio of g/f1 and g/f2')
+lines(x,g/f2,lty=3,col='red',lwd=2)
+legend('topright',legend=c('g/f1','g/f2'),col=c('blue','red'),lwd=c(2,2),lty=c(4,3))
+```
+
+**Since $g(x)/f_2(x)$ is more close to a constant, I consider $f_2(x)$ can produce a smaller variance in estimating $g(x)$.** Here is a numerical experiment to validate it:
+```{r}
+set.seed(555)
+m = 10000
+theta.hat <- variance <- numeric(2)
+g = function(x){
+  x^2*exp(-x^2/2)/sqrt(2*pi)*(x>1)
+}
+# using f1
+u = runif(m)
+x = 2/(1-u) - 1 # inverse transform method
+fg = g(x)/(2/(x+1)^2)
+theta.hat[1] = mean(fg)
+variance[1] = var(fg)
+# using f2
+x = numeric(m)
+i = 1
+while(i<=m){
+  temp  = rnorm(1,mean=1,sd=1)
+  if(temp>1) {
+    x[i] =temp
+    i = i+1}
+}
+
+fg = g(x)/(2*dnorm(x,mean=1,sd=1))
+theta.hat[2] = mean(fg)
+variance[2] = var(fg)
+t = rbind(theta.hat,variance)
+colnames(t) = c('by f1','by f2')
+print(t)
+```
+The variance produced by $f_2(x)$ is about **99% smaller** than the variance by $f_1(x)$, which validates my hypothesis. 
+
+Moreover, since the estimate produced by $f_2(x)$ **is more precisely, I chose $\hat{\theta}^{IS}_f = 0.400042383$ as my estimate.**
+<p align="right">$\blacksquare$</p>
+
+## Proof of Proposition 5.3 on Textbook
+At first, I shall define some notations. Let $I_j  = \{x:a_{j-1}\le x < a_j\}$ and the probability that x falls in to $I_j$ is $1/k$.  
+
+Let $$\theta_j = \int_{I_j}g_j(x)\,dx$$
+and therefore $\theta = \theta_1 + \cdots + \theta_k$.
+
+In addition, we should shift up $f(x)$ in every $I_j$ as $f_j(x) = kf(x),\quad x\in I_j$. Generating $X$ from $f_j$ and we have $\theta_j = \text{E}_{f_j}\left[ \frac{g_i(X)}{f_j(X)} \right]$ and $\sigma_j^2 = \text{Var}\left(\frac{g_i(X)}{f_j(X)}\right)$. We will compute the importance sampling estimator $\hat{\theta_j}$ with $m=\frac{M}{k}$replicates for every $I_j$ and compute
+$\hat{\theta}^{SI} = \sum_{j=1}^k\hat{\theta}_j$. And we have $\text{ Var}\left(\hat{\theta}^{SI}\right) = \sum_{j=1}^{k}\frac{\sigma_j^2}{m} = \frac{1}{m}\sum_{j=1}^{k}\sigma_j^2$.
+
+As for the importance sampling, let $Y=\frac{g(X)}{f(x)}$ and we have $\theta = \text{E}_{f}\left[\frac{g(X)}{f(X)}\right]=\text{E}_{f}[Y]$. Moreover, if M replicates are generated for importance sampling estimate, i.e., $\hat{\theta}^I$, then $\text{Var}(\hat{\theta}^I)=\frac{\sigma^2}{M}$, where $\sigma^2=\text{Var}\left(\frac{g(X)}{f(X)} \right) = \text{Var}(Y)$.
+Now the task is to show that 
+$$\text{Var}\left(\hat{\theta}^I\right) \ge
+\text{ Var}\left(\hat{\theta}^{SI}\right)$$
+
+Consider the two-stage experiment. First generate $J$ from $1$ to $k$  with equal probability $1/k$. After observing $J=j$, find the corresponding interval $I_j$ and generate a random variable $X^*$ from density $f_j(x)$. After that, we calculate
+
+\begin{align*}
+Y^* = \frac{g_j(X)}{f_j(X)} = \frac{g_j(X)}{kf(X*)}
+\end{align*}
+
+First I will prove $X$ and $X^*$ has the same distribution. If $x_0$ come from a certain interval $I_{j_0}$, then
+
+\begin{align*}
+\text{P}(X^{*}=x_0) &= \sum_{j}\text{P}(X^{*}=x_0|x_0\in I_{j})\text{P}(x_0\in I_{j})\\
+&= \text{P}(X^{*}=x_0|x_0\in I_{j_0})\text{P}(x_0\in I_{j_0})\\
+&=k\times f(x_0)\times \frac{1}{k} \\
+&= f(x_0) \\
+& = \text{P}(X=x_0)
+\end{align*}
+
+As for $Y^*$, quite similarly to the proof of $X^*$, 
+we still let $x_0$ come from a certain interval $I_{j_0}$ and calculate 
+$Y^*_0 = \frac{g_i(x_0)}{f_i(x_0)} = \frac{g_i(x_0)}{kf(x_0)}$. 
+
+And we have
+
+\begin{align*}
+
+\text{P}(Y^{*}=Y^*_0)
+&=\text{P}\left(Y^*=\frac{g_i(x_0)}{kf(x_0)}\right)  \\
+
+&=\sum_{j}\text{P} \left( Y^* = \frac{g_i(x_0)}{k f(x_0)} | x_0 \in I_{j} \right)\text{P}(x_0\in I_{j})\\
+
+
+&= \text{P}\left(Y^{*}=\frac{g_i(x_0)}{k f(x_0)}|x_0\in I_{j_0}\right)\text{P}(x_0\in I_{j_0})\\
+
+&=  k\times f(x_0) \times \frac{1}{k} \\
+
+&= f(x_0)
+
+\end{align*}
+
+
+
+On the other hand, as for $\frac{Y}{k} = \frac{g(x)}{kf(x)}$, we have:
+
+\begin{align*}
+\text{P}\left(\frac{Y}{k} = \frac{Y_0}{k}\right) 
+&= \text{P}\left(\frac{Y}{k} = \frac{g(x_0)}{kf(x_0)}\right) \\
+&= \text{P}(x = x_0)\\
+&= f(x_0)
+\end{align*}
+
+**Then we have proved that $X^*$ and $X$ have the same distribution , so do $Y^*$ and $Y/k$.**
+
+Using the conditional variance formula, we can derive the variance of $Y^*$:
+\[\text{Var}(Y^*) = \text{E}[\text{Var}(Y^*|J)]+\text{Var}(\text{E}[Y^*|J]) \]
+where
+\[ \text{E}[\text{Var}(Y^*|J)] = \sum_{j=1}^k \sigma_j^2\text{P}(J=j) = \frac{1}{k}\sum_{j=1}^k \sigma_j^2\]
+and
+\[\text{Var}(\text{E}[Y^*|J]) = \text{Var}(\theta_J)\]
+
+Therefore we have 
+\[ \text{Var}(Y^*) =\frac{1}{k}\sum_{j=1}^k \sigma_j^2 +\text{Var}(\theta_J) \]
+
+And we have
+\begin{align*}
+\sigma^2 &= \text{Var}(Y) \\
+  &= \text{Var}(kY^*) \\
+  &= k^2\text{Var}(Y^*)\\
+  &= k^2\left[\frac{1}{k}\sum_{j=1}^k \sigma_j^2 +\text{Var}(\theta_J) \right] \\
+  &= k\sum_{j=1}^k \sigma_j^2 +k^2\text{Var}(\theta_J)\\
+\end{align*}
+
+Then finally we have 
+
+\begin{align*}
+\sigma^2 - k\sum_{j=1}^k \sigma_j^2  = k^2\text{Var}(\theta_J) \ge 0
+\end{align*}
+
+which means
+\begin{align*}
+&\quad \sigma^2 - k\sum_{j=1}^k \sigma_j^2 \ge 0\\
+&\Rightarrow \frac{1}{M}\sigma^2 - \frac{k}{M}\sum_{j=1}^k \sigma_j^2 \ge 0 \\
+&\Rightarrow \frac{1}{M}\sigma^2 - \frac{1}{m}\sum_{j=1}^k \sigma_j^2 \ge 0 \\
+&\Rightarrow \text{Var}\left(\hat{\theta}^I\right) - \text{ Var}\left(\hat{\theta}^{SI}\right) \ge 0
+\end{align*}
+
+<p align="right">$\blacksquare$</p>

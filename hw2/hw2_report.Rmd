@@ -1,0 +1,297 @@
+---
+title: "统计计算第二次作业报告"
+author: "林子开"
+date: "2023-10-08"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Exercise 5.2
+
+Monte Carlo estimate of the standard normal cdf, compared with the
+**pnorm** function is as follows:
+
+```{r}
+set.seed(123)
+xx = seq(-2,2,length=21)
+cdfs = numeric(length(xx))
+for(i in 1:length(xx)){
+  x = xx[i]
+  if(x>=0){
+    m = 1e4
+    u = runif(m,0,x)
+    cdf = 0.5 + x*mean(exp(-u^2/2))/sqrt(2*pi)}
+  else{
+    x = -x
+    m = 1e4
+    u = runif(m,0,x)
+    cdf = 0.5 - x*mean(exp(-u^2/2))/sqrt(2*pi)
+  }
+  cdfs[i] = cdf
+}
+Phi = pnorm(xx)
+print(round(rbind(xx,cdfs,Phi),4))
+
+```
+
+The estimate of the variance of my MC estimate of Phi(2) and a 95% CI
+for Phi(2) is as follows:
+
+```{r}
+set.seed(123)
+m = 1e4
+u = runif(m,0,2)
+g = 0.5 + x*exp(-u^2/2)/sqrt(2*pi)
+cdf = mean(g)
+v = mean((g-cdf)^2)/m
+se = sqrt(v)
+CI = c(cdf-1.96*se,cdf+1.96*se)
+print(v)
+print(CI)
+```
+
+# Exercise 5.3
+
+The first method with the corresponding variance is as follows:
+
+```{r}
+set.seed(555)
+INT1 = function(m){
+  u = runif(m,0,0.5)
+  g = exp(-u)
+  theta.hat = 0.5*mean(g)
+  return(theta.hat)
+}
+m = 1e4
+theta.hat = numeric(1e3)
+for(i in 1:1e3){
+  theta.hat[i] = INT1(m)
+}
+v.hat = var(theta.hat)
+print(v.hat)
+```
+
+The second method with the corresponding variance is as follows:
+
+```{r}
+set.seed(555)
+INT2 = function(m){
+  u = rexp(m)
+  g = u<=0.5
+  theta.star = mean(g)
+  return(theta.star)
+}
+m = 1e4
+theta.star = numeric(1e3)
+for(i in 1:1e3){
+  theta.star[i] = INT2(m)
+}
+v.star = var(theta.star)
+print(v.star)
+```
+
+And the empirical percent reduction is:
+
+```{r}
+(v.star-v.hat)/v.star
+```
+
+The variance of $\hat{\theta}$ is smaller than $\theta^*$. Here I give a
+theoretical proof. We have
+$$\hat{\theta} = \frac{1}{2}\frac{1}{m}\Sigma_{i=1}^m\text{e}^{u_i}$$
+And the variance of $\hat{\theta}$ is: $$
+\begin{align}
+Var(\hat{\theta}) &=  \frac{1}{4m}{Var(e^U)}
+\end{align}
+$$ where $U$ from Uniform(0,0.5), and $$
+\begin{align}
+Var(e^U) &= \int_0^{0.5}2e^{-2x}\,\text{d}x - \left[ \int_0^{0.5}2e^{-x}\,\text{d}x\right]^2\\
+&=  0.012848
+\end{align}
+$$
+
+On the other hand, $$
+\begin{align}
+Var(\theta^*)& = \frac{\theta(1-\theta)}{m} \\
+&= \frac{e^{-1/2}(1-e^{-1/2})}{m}\\
+&= \frac{0.238651218541}{m}
+\end{align}
+$$ Then the theoretical percent variance is $$
+\begin{align}
+\frac{Var(\theta^*)-Var(\hat{\theta})}{Var(\theta^*)}&=\frac{0.238651218541- 0.012848/4}{0.238651218541}\\
+&=0.9865
+\end{align}
+$$ which is consistent with the experimental result above.
+
+# Exercise 5.6
+
+Assume $\theta_1$ the estimate by antithetic variates, and $\theta_2$ is
+obtained by simple MC.
+$$\theta_1 = \frac{1}{m}\Sigma_{i=1}^{m/2}(e^{u_i}+e^{1-u_i})$$
+$$\begin{align}
+Var(\theta_1) &= \frac{1}{m^2}\Sigma_{i=1}^{m/2}(Var(e^{u_i}+e^{1-u_i}))\\
+&= \frac{1}{2m}[Var(e^U)+Var(e^{1-U})+2Cov(e^U,e^{1-U})] 
+\end{align}$$
+
+where
+
+$$\begin{align}
+Var(e^U)&=Var(e^{1-U}) = E[e^{2U}]-(E[e^U])^2=\frac{1}{2}(e^2-1)-(e-1)^2=0.24203\\
+Cov(e^U,e^{1-U}) &= E[e^U e^{1-U}] - E[e^U]E[e^{1-U}]= e − (e − 1)^2 = −0.23421 
+\end{align}$$
+
+On the other hand, $$Var(\theta_2) = \frac{1}{m}Var(e^U) $$ Then the
+percent reduction in variance is: $$ \begin{align}
+&\quad \frac{Var(\theta_2)-Var(\theta_1)}{Var(\theta_2)} \\
+&=\frac{0.24203-(0.24203-0.23421)}{0.24203}\\
+&=0.9677
+\end{align}$$
+
+# Exercise 5.7
+
+Antithetic variate approach and the simple MC method to estimate
+$\theta$ with their variance are as follows:
+
+```{r}
+MC.simple = function(x,R=1e4){
+  u = runif(R,0,x)
+  INTEG = x*mean(exp(u))
+}
+MC.ant = function(x,R=1e4){
+  u = runif(R/2,0,x)
+  v = 1-u
+  u = c(u,v)
+  INTEG = x*mean(exp(u))
+}
+set.seed(123)
+m = 1000
+MC1 <- MC2 <- numeric(m)
+for(i in 1:1000){
+  MC1[i] = MC.simple(1)
+  MC2[i] = MC.ant(1)
+}
+v.simple = var(MC1)
+v.ant = var(MC2)
+```
+
+And the empirical estimate of the percent reduction in variance using
+the antithetic variate is:
+
+```{r}
+(v.simple-v.ant)/v.simple
+```
+
+which is very close to the theoretical value 0.9677 from Exercise 5.6
+
+# Exercise 5.8
+
+Since Uniform distribution is a special case of symmetric Beta
+distribution, we can directly prove the claim for symmetric beta
+distribution.
+
+Because of symmetricity, $$E[U]=1/2, \, E[1-U]=1/2$$ Suppose
+$$Var(U)=Var(1-U)=\sigma^2$$ and then we have
+$$E[U^2]=Var(U)+(E[U])^2 = \sigma^2 + 1/4$$ and
+$$E[X]=E[X']=a/2,\quad Var(X)=Var(X')=a^2\sigma^2,\quad 
+E[X^2]=E[X'^2]=a^2\sigma^2 + a^2/4$$
+
+Therefore, $$\begin{align}
+Cov(X,X') &= a^2(\,E[U(1-U)]-E[U]E[1-U]\,)\\
+&=a^2(E[U] - E[U^2] - E[U]E[1-U])\\
+&=a^2(1/2 - (\sigma^2 + 1/4) -(1/2)^2 )\\
+&= -a^2\sigma^2
+\end{align}$$
+
+Then the correlation is: $$
+\begin{align}
+\rho(X,X')&=\frac{Cov(X,X')}{\sqrt{Var(X)Var(X')}}\\
+&=\frac{-a^2\sigma^2}{a^2\sigma^2}\\
+&=-1
+\end{align}
+$$
+
+# Exercise 5.10
+
+```{r}
+set.seed(123)
+MC.simple = function(x,R=1e4){
+  u = runif(R,0,x)
+  INTEG = x*mean(exp(-u)/(1+u^2))
+}
+MC.ant = function(x,R=1e4){
+  u = runif(R/2,0,x)
+  v = 1-u
+  u = c(u,v)
+  INTEG = x*mean(exp(-u)/(1+u^2))
+}
+set.seed(123)
+m = 1000
+MC1 <- MC2 <- numeric(m)
+for(i in 1:1000){
+  MC1[i] = MC.simple(1)
+  MC2[i] = MC.ant(1)
+}
+v.simple = var(MC1)
+v.ant = var(MC2)
+(v.simple-v.ant)/v.simple
+```
+
+# Approximate the fraction of a hypersphere in hypercube
+
+## The formula for the EXACT values of the fraction
+
+According to WIKIPEDIA
+<https://en.wikipedia.org/wiki/Volume_of_an_n-ball>, the volumn of an
+d-dimension hypersphere is
+$$V_{sphere}(d,R)=\frac{\pi^{d/2}}{\Gamma(\frac{d}{2}+1)}R^d $$ and the
+volumn of the inscribed d-dimensional hypercube is
+$$V_{cube}(d,R)=(2R)^d $$ Therefore the the fraction of a d-dimensional
+hypersphere which lies in the inscribed d-dimensional hypercube is
+$$f(d) = \frac{V_{sphere}(d,R)}{V_{cube}(d,R)}=\frac{\pi^{d/2}}{2^d\Gamma(\frac{d}{2}+1)}$$
+where the Gamma function is $$
+\Gamma(\frac{d}{2}+1) = \begin{cases}
+    (\frac{1}{2})! \quad & \text{if } d \text{ is even} \\  
+    \pi^{\frac{1}{2}}  \Pi_{j=0}^{d-1}(\frac{1}{2}+j) & \text{otherwise.}
+\end{cases}
+$$
+
+## Approximate the value of $\pi$ by Monte Carlo
+
+```{r}
+set.seed(123)
+# Define the function to calculate pi using Monte Carlo simulation
+MC_pi <- function(d) {
+  r <- 0.5
+  x = matrix(runif(d, -r, r),ncol=d)
+  pi_estimate <- 0
+  n = 0
+  in_sphere = 0
+  while (TRUE) {
+    n = n + 1
+    x = runif(d, -r, r) # d维空间中的一个点
+    in_sphere = in_sphere + as.numeric(sum(x^2) <= r^2) # 判断该点是否在球内
+    fraction = in_sphere/n
+    pi_estimate = (fraction*2^d*gamma(d/2+1))^(2/d)
+    # print(pi_estimate)
+    if ((pi_estimate*1e5)%/%1 == 314159)  break
+  }
+  return(n)
+}
+
+dimensions = 2:10
+ns = numeric(length(dimensions))
+for(i in 1:length(dimensions)){
+  ns[i] = MC_pi(dimensions[i])
+}
+print(rbind(dimensions,ns))
+plot(dimensions,log(ns))
+#            [,1]  [,2]  [,3] [,4] [,5]    [,6]  [,7] [,8]     [,9]
+# dimensions    2     3     4    5    6       7     8    9       10
+# ns         9753 19746 10077  997 6440 6715578 15390 4191 16820432
+```

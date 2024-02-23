@@ -1,0 +1,67 @@
+---
+title: "统计计算第三次作业报告"
+author: "林子开"
+date: "2023-10-13"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+## Exercise 5.11
+Assume that $\hat{\theta_1}$ and $\hat{\theta_2}$ are two unbiased estimators of $\theta$.
+Moreover, we suppose that they are two distinct estimators such that $Var(\hat{\theta_1}-\hat{\theta_2})>0$, otherwise $c^*$ can be a arbitrary number.
+
+The variance of $\hat{\theta_c}=c\hat{\theta_1}+(1-c)\hat{\theta_2}$ is:
+$$
+\begin{align}
+  Var(\hat{\theta_c})&= c^2Var(\hat{\theta_1}) + (1-c)^2Var(\hat{\theta_2})+2c(1-c)Cov(\hat{\theta_1},\hat{\theta_2}) \\
+  &= \left[Var(\hat{\theta_1})+Var(\hat{\theta_2})-2Cov(\hat{\theta_1},\hat{\theta_2})\right]c^2
+  +\left[-2Var(\hat{\theta_2})+2Cov(\hat{\theta_1},\hat{\theta_2})\right]c
+  + Var(\hat{\theta_2})
+\end{align}
+$$
+Since we have the assumption that 
+$$Var(\hat{\theta_1}-\hat{\theta_2}) = \left[Var(\hat{\theta_1})+Var(\hat{\theta_2})-2Cov(\hat{\theta_1},\hat{\theta_2})\right]>0$$
+
+we can obtain the optimal $c^*$:
+$$ 
+c^* = \frac{-Var(\hat{\theta_2})+Cov(\hat{\theta_1},\hat{\theta_2})}{Var(\hat{\theta_1})+Var(\hat{\theta_2})-2Cov(\hat{\theta_1},\hat{\theta_2})}
+$$
+
+<p align="right">$\blacksquare$</p>
+
+
+## Estimating the rare event probability
+### The sample sizes when applying SMC method
+```{r}
+set.seed(123)
+log.sampleSize.SMC = c(3:8)
+result.SMC = numeric(length(log.sampleSize.SMC))
+count = 0
+for(n in log.sampleSize.SMC){
+  count = count + 1
+  u = rnorm(10^n)
+  result.SMC[count] = mean(u>10)
+}
+rbind(log.sampleSize.SMC,result.SMC)
+```
+### The sample sizes when applying importance sampling
+```{r}
+set.seed(123)
+log.sampleSize.ImpS = c(3:8)
+result.ImpS = numeric(length(log.sampleSize.SMC))
+count = 0
+for(n in log.sampleSize.ImpS){
+  count = count + 1
+  u = rnorm(10^n,10,1)
+  result.ImpS[count] = mean((u>10)*exp(50-10*u))
+}
+result.ImpS = signif(result.ImpS,6)
+rbind(log.sampleSize.ImpS,result.ImpS)
+```

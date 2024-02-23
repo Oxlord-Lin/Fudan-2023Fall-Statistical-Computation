@@ -1,0 +1,487 @@
+---
+title: "统计计算 Homework-7"
+author: "林子开 21307110161"
+date: "2023年11月"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: 
+      collapsed: false
+      smooth_scroll: false
+      number_sections: true
+---
+
+```{=html}
+<style type="text/css">
+h1.title{
+  font-size: 38px;
+  color: DarkBlue;
+  text-align: center;
+}
+h4.author{
+  font-size: 18px;
+  color: DarkBlue;
+  text-align: center;
+}
+h4.date {
+  font-size: 18px;
+  font-family: "Times New Roman", Times, serif;
+  color: DarkBlue;
+  text-align: center;
+}
+
+</style>
+```
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, cache = TRUE, message = TRUE, fig.align = "center")
+```
+
+
+```{r,warning=FALSE,include=FALSE}
+# 导入所有需要的包，但不进行展示
+library(ggplot2)
+library(plotly)
+library(dplyr)
+library(magrittr)
+library(cowplot)
+library(pROC)
+library(caret)
+library(tidyr)
+library(bootstrap)
+```
+
+
+# Exercise 7.3
+首先，定义用于计算bootstrap t confidence interval的函数如下
+```{r}
+boot.t.ci <- 
+  function(x,B=500,R=100,level=0.95,statistic){
+    # compute the bootstrap t CI
+    x <- as.matrix(x)
+    n <- nrow(x)
+    stat.outerLoop <- numeric(B)
+    se <- numeric(B) # 用于存储每一轮内循环的标准误
+    
+    boot.se <- function(x,R,f){ # 内循环
+      # local function to compute the bootstrap
+      # estimate of standard error for statistic f(x)
+      x <- as.matrix(x)
+      m = nrow(x)
+      stat.innerLoop <- replicate(R,expr={
+        i <- sample(1:m, size = m, replace = TRUE)
+        f(x[i,])
+      })
+      return(sd(stat.innerLoop))
+    }
+    
+    for(b in 1:B) { # 外循环
+      j <- sample(1:n,size = n, replace = TRUE)
+      y <- x[j,] # 对下标抽样
+      stat.outerLoop[b] <- statistic(y)
+      se[b] = boot.se(y,R=R,f = statistic)
+    } 
+    stat0 <- statistic(x)
+    t.stats <- (stat.outerLoop - stat0)/se # 计算t值
+    se0 <- sd(stat.outerLoop)
+    alpha <- 1 - level
+    Qt <- quantile(t.stats,c(alpha/2, 1-alpha/2),type=1)
+    names(Qt) <- rev(names(Qt))
+    CI <- rev(stat0 - Qt * se0)
+    return(CI)
+  }
+```
+
+然后对$\texttt{law}$数据集估计相关系数的bootstrap t confidence interval，如下：
+```{r}
+set.seed(23333)
+dat <- law
+stat <- function(dat){
+  cor(dat[,1],dat[,2])
+}
+CI <- boot.t.ci(dat,B=2000,R=200,statistic=stat)
+print(CI)
+
+```
+
+# Exercise 7.10
+导入数据集，并进行一些准备性的工作
+```{r}
+library(DAAG)
+attach(ironslag)
+n <- length(magnetic)
+e1 <- e2 <- e3 <- e4 <- numeric(n)
+```
+
+对线性模型、二次模型、指数模型、三次模型，分别进行n折交叉验证
+```{r}
+# selecting by n-fold cross validation
+for(k in 1:n){
+  y = magnetic[-k]
+  x = chemical[-k]
+  
+  J1 <- lm(y~x)
+  yhat1 <- J1$coefficients[1] + J1$coefficients[2] * chemical[k]
+  e1[k] <- magnetic[k] - yhat1
+  
+  J2 <- lm(y~x+I(x^2))
+  yhat2 <- J2$coefficients[1] + J2$coefficients[2] * chemical[k] + J2$coefficients[3]*chemical[k]^2
+  e2[k] <- magnetic[k] - yhat2
+  
+  J3 <- lm(log(y)~x)
+  logyhat3 <- J3$coefficients[1] + J3$coefficients[2] * chemical[k]
+  yhat3 <- exp(logyhat3)
+  e3[k] <- magnetic[k] - yhat3
+  
+  J4 <- lm(y~x+I(x^2)+I(x^3))
+  yhat4 <- J4$coefficients[1] + J4$coefficients[2] * chemical[k] + J4$coefficients[3]*chemical[k]^2 + J4$coefficients[4]*chemical[k]^3
+  e4[k] <- magnetic[k] - yhat4
+}
+```
+
+计算四种模型的MSE如下：
+```{r}
+c(mean(e1^2),mean(e2^2),mean(e3^2),mean(e4^2))
+```
+
+可以看出，第二个模型，也即二次模型，有最小的MSE，说明在n折交叉验证下，二次模型有最好的拟合效果
+
+下面是用矫正$R^2$对模型进行选择：
+```{r}
+# selecting by R^2
+y = magnetic
+x = chemical
+
+J1 <- lm(y~x)
+J1 <- summary(J1)
+
+J2 <- lm(y~x+I(x^2))
+J2 <- summary(J2)
+
+J3 <- lm(log(y)~x)
+J3 <- summary(J3)
+
+J4 <- lm(y~x+I(x^2)+I(x^3))
+J4 <- summary(J4)
+
+print(c(J1$adj.r.squared,J2$adj.r.squared,J3$adj.r.squared,J4$adj.r.squared))
+
+```
+可以看出，二次模型的矫正$R^2$最大，说明有最好的拟合效果，和n折交叉验证的结果一致。
+
+# Exercise 7.11
+导入数据，并进行一些准备工作：
+```{r}
+library(DAAG)
+attach(ironslag)
+n <- length(magnetic)
+e1 <- e2 <- e3 <- e4 <- numeric(n*(n-1)/2)
+```
+
+然后对四个模型分别是用leave-two-out的交叉验证方式进行比较，如下：
+```{r}
+# selecting by leave-two-out cross validation
+k = 1
+for(i in 1:(n-1))
+  for(j in (i+1):n){
+    # leave two samples out
+    y = magnetic[c(-i,-j)] 
+    x = chemical[c(-i,-j)]
+    
+    J1 <- lm(y~x) # linear model
+    yhat1.i <- J1$coefficients[1] + J1$coefficients[2] * chemical[i]
+    e1[k] <- magnetic[i] - yhat1.i
+
+    yhat1.j <- J1$coefficients[1] + J1$coefficients[2] * chemical[j]
+    e1[k+1] <- magnetic[j] - yhat1.j
+
+    
+    J2 <- lm(y~x+I(x^2)) # quadratic model
+    yhat2.i <- J2$coefficients[1] + J2$coefficients[2] * chemical[i] + J2$coefficients[3]*chemical[i]^2
+    e2[k] <- magnetic[i] - yhat2.i
+    yhat2.j <- J2$coefficients[1] + J2$coefficients[2] * chemical[j] + J2$coefficients[3]*chemical[j]^2
+    e2[k+1] <- magnetic[j] - yhat2.j
+    
+    J3 <- lm(log(y)~x) # exponential model
+    logyhat3.i <- J3$coefficients[1] + J3$coefficients[2] * chemical[i]
+    yhat3.i <- exp(logyhat3.i)
+    e3[k] <- magnetic[i] - yhat3.i
+    logyhat3.j <- J3$coefficients[1] + J3$coefficients[2] * chemical[j]
+    yhat3.j <- exp(logyhat3.j)
+    e3[k+1] <- magnetic[j] - yhat3.j
+    
+    J4 <- lm(log(y)~log(x)) # log-log model
+    logyhat4.i <- J4$coefficients[1] + J4$coefficients[2] * log(chemical[i])
+    yhat4.i <- exp(logyhat4.i)
+    e4[k] <- magnetic[i] - yhat4.i
+    logyhat4.j <- J4$coefficients[1] + J4$coefficients[2] * log(chemical[j])
+    yhat4.j <- exp(logyhat4.j)
+    e4[k+1] <- magnetic[i] - yhat4.j
+    
+    k <- k + 2
+  }
+```
+
+计算以上四个模型的MSE如下：
+```{r}
+c(mean(e1^2),mean(e2^2),mean(e3^2),mean(e4^2))
+# 19.57227 17.87018 18.45491 26.00865
+```
+在leave-two-out交叉验证下，二次模型仍然有最小的MSE，说明二次函数是拟合效果最好的模型。
+
+
+# Project 7.A
+## 准备工作
+**说明：**本题要求的是“check the empirical coverage rates for the **sample** mean”，但是经过尝试（我真的尝试过了，并不是看错题目），我发现如果是sample mean，那么覆盖率全都是100%，而且我认为这并不是构建置信区间的本意。所以我在以下的实验中，都是对“emprical coverage rates **population** mean” 进行讨论，特此说明，还望助教学长手下留情。
+
+首先，定义基于bootstrap样本计算统计量的函数如下：
+```{r}
+bootstrap <- function(x,statistic,B=200){
+  n = length(x)
+  theta.boot = numeric(n)
+  for(b in 1:B){
+    i = sample(1:n, size = n, replace = TRUE)
+    mySample = x[i] 
+    theta.boot[b] <- statistic(mySample) # statistic是统计量，由用户指定
+  } 
+  return(theta.boot)
+}
+```
+
+定义计算三类置信区间的函数如下：
+```{r}
+# standard normal bootstrap confidence interval
+CI.standardNormal <- function(x,statistic,alpha=0.05,B=200){
+  z = qnorm(1-alpha/2)
+  theta.hat <- statistic(x)
+  se = sd(bootstrap(x,statistic,B))
+  return(c(theta.hat-z*se,theta.hat+z*se))
+}
+
+# basic bootstrap confidence interval
+CI.basic <- function(x,statistic,alpha=0.05,B=200){
+  theta.hat <- statistic(x)
+  theta.boot <- bootstrap(x,statistic,B)
+  Qt <- quantile(theta.boot,c(alpha/2, 1-alpha/2),type=1)
+  names(Qt) <- rev(names(Qt))
+  CI <- rev(2*theta.hat - Qt)
+}
+
+# percentile confidence interval
+CI.percentile <- function(x,statistic,alpha=0.05,B=200){
+  theta.boot <- bootstrap(x,statistic,B)
+  Qt <- quantile(theta.boot,c(alpha/2, 1-alpha/2),type=1)
+  return(Qt)
+}
+```
+
+## 试验结果
+分别计算三类置信区间的empirical coverage rates，以及population mean落在区间左侧的比例，落在区间右侧的比例。（后有汇总展示）
+```{r}
+set.seed(2023)
+result.standardNormal <- replicate(1000,expr={
+  x = rnorm(5)
+  CI <- CI.standardNormal(x,mean)
+  coverage <- as.logical( CI[1] < 0 & 0 < CI[2] ) # 覆盖
+  miss.left <- as.logical( CI[1] > 0 ) # 落在区间左侧
+  miss.right <- as.logical ( CI[2] < 0) # 落在区间右侧
+  c(CI,coverage,miss.left,miss.right) 
+})
+c(mean(result.standardNormal[3,]),mean(result.standardNormal[4,]),mean(result.standardNormal[5,])) 
+
+set.seed(2023)
+result.basic <- replicate(1000,expr={
+  x = rnorm(5)
+  CI <- CI.basic(x,mean)
+  coverage <- as.logical( CI[1] < 0 & 0 < CI[2] ) # 覆盖
+  miss.left <- as.logical( CI[1] > 0 ) # 落在区间左侧
+  miss.right <- as.logical ( CI[2] < 0) # 落在区间右侧
+  c(CI,coverage,miss.left,miss.right) 
+})
+c(mean(result.basic[3,]),mean(result.basic[4,]),mean(result.basic[5,])) 
+
+set.seed(2023)
+result.percentile <- replicate(1000,expr={
+  x = rnorm(5)
+  CI <- CI.percentile(x,mean)
+  coverage <- as.logical( CI[1] < 0 & 0 < CI[2] ) # 覆盖
+  miss.left <- as.logical( CI[1] > 0 ) # 落在区间左侧
+  miss.right <- as.logical ( CI[2] < 0) # 落在区间右侧
+  c(CI,coverage,miss.left,miss.right) 
+})
+c(mean(result.percentile[3,]),mean(result.percentile[4,]),mean(result.percentile[5,])) 
+```
+
+将三种区间的覆盖情况汇总如下
+```{r}
+# combine all the results together in a dataframe
+result <- as.data.frame(rbind(c(mean(result.standardNormal[3,]),mean(result.standardNormal[4,]),mean(result.standardNormal[5,])),c(mean(result.basic[3,]),mean(result.basic[4,]),mean(result.basic[5,])),c(mean(result.percentile[3,]),mean(result.percentile[4,]),mean(result.percentile[5,]))))
+colnames(result) <- c('  coverage rate  ','  missing left  ','  missing right  ')
+rownames(result) <- c('standard normal','basic','percentile')
+result
+```
+
+可以发现，在三种区间中，standard normal的覆盖率是最高的，basic次之，percentile最低。
+
+# Project 7.8
+## 准备工作
+**说明：**与上题类似，在本题中，如果考虑的是对**sample** skewness statistic的覆盖率，则覆盖率会出现全部是1的情况（我真的试过了），没有太多讨论的意义。因此，以下的讨论都是针对**population** skewness statistic的覆盖情况进行讨论。
+
+首先，定义根据bootstrap样本计算对应统计量的函数
+```{r}
+bootstrap <- function(x,statistic,B=200){
+  n = length(x)
+  theta.boot = numeric(n)
+  for(b in 1:B){
+    i = sample(1:n, size = n, replace = TRUE)
+    mySample = x[i] 
+    theta.boot[b] <- statistic(mySample) # statistic是统计量，需由用户传入
+  }
+  return(theta.boot)
+}
+```
+
+定义计算三种置信区间的函数如下：
+```{r}
+CI.standardNormal <- function(x,statistic,alpha=0.05,B=200){
+  z = qnorm(1-alpha/2)
+  theta.hat <- statistic(x)
+  se = sd(bootstrap(x,statistic,B))
+  return(c(theta.hat-z*se,theta.hat+z*se))
+}
+
+CI.basic <- function(x,statistic,alpha=0.05,B=200){
+  theta.hat <- statistic(x)
+  theta.boot <- bootstrap(x,statistic,B)
+  Qt <- quantile(theta.boot,c(alpha/2, 1-alpha/2),type=1,na.rm = TRUE)
+  names(Qt) <- rev(names(Qt))
+  CI <- rev(2*theta.hat - Qt)
+}
+
+CI.percentile <- function(x,statistic,alpha=0.05,B=200){
+  theta.boot <- bootstrap(x,statistic,B)
+  Qt <- quantile(theta.boot,c(alpha/2, 1-alpha/2),type=1,na.rm=TRUE)
+  return(Qt)
+}
+```
+
+定义计算sknewness statistic统计量的函数如下：
+```{r}
+sk <- function(x){
+  # compute the sample skewness coeff
+  xbar <- mean(x)
+  m3 <- mean((x-xbar)^3)
+  m2 <- mean((x-xbar)^2)
+  # if(is.na(m3/m2^1.5))
+  #   {print('error')}
+  return(m3/m2^1.5)
+}
+```
+
+## 来自正态分布的样本的试验结果
+首先对来自标准正态分布（skewness = 0）的样本进行试验
+```{r}
+# the following is the nornmal distribution
+set.seed(2023)
+result.standardNormal <- replicate(1000,expr={
+  x = rnorm(5)
+  CI <- CI.standardNormal(x,sk)
+  sk.hat <- sk(x) # sample skewness statistic
+  coverage <-  CI[1] < 0 & 0 < CI[2] 
+  miss.left <-  CI[1] > 0
+  miss.right <-  CI[2] < 0
+  c(CI,coverage,miss.left,miss.right) 
+})
+proportion1 <- c(mean(result.standardNormal[3,],na.rm = TRUE),mean(result.standardNormal[4,],na.rm = TRUE),mean(result.standardNormal[5,],na.rm = TRUE))
+
+
+set.seed(2023)
+result.basic <- replicate(1000,expr={
+  x = rnorm(5)
+  CI <- CI.basic(x,sk)
+  sk.hat <- sk(x) # sample skewness statistic
+  coverage <-  CI[1] < 0 & 0 < CI[2] 
+  miss.left <-  CI[1] > 0
+  miss.right <-  CI[2] < 0
+  c(CI,coverage,miss.left,miss.right) 
+})
+proportion2 <- c(mean(result.basic[3,]),mean(result.basic[4,]),mean(result.basic[5,])) 
+
+
+set.seed(2023)
+result.percentile <- replicate(1000,expr={
+  x = rnorm(5)
+  sk.hat <- sk(x)# sample skewness statistic
+  CI <- CI.percentile(x,sk)
+  coverage <-  CI[1] < 0 & 0 < CI[2] 
+  miss.left <-  CI[1] > 0 
+  miss.right <-  CI[2] < 0
+  c(CI,coverage,miss.left,miss.right) 
+})
+proportion3 <-c(mean(result.percentile[3,]),mean(result.percentile[4,]),mean(result.percentile[5,]))
+```
+
+
+对来自标准正态分布的样本而言，三种置信区间的覆盖情况如下：
+```{r}
+# combine all the results together in a data frame
+result <- as.data.frame(rbind(proportion1,proportion2,proportion3))
+colnames(result) <- c('  coverage rate  ','  missing left  ','  missing right  ')
+rownames(result) <- c('standard normal','basic','percentile')
+result
+```
+可以看出，对于无倾斜的正态分布，standard normal和percentile都达到了100%的覆盖率，高于95%，但basic只有76.1%的覆盖率，低于95%。
+
+## 来自卡方分布的样本的试验结果
+对来自$\chi^2(5)$分布（skewness=$\sqrt{\frac{8}{5}}$）的样本进行试验：
+```{r}
+# the following is the chi-square distribution
+set.seed(2023)
+result.standardNormal <- replicate(1000,expr={
+  x = rchisq(5,df=5)
+  CI <- CI.standardNormal(x,sk)
+  sk.hat <- sk(x)
+  coverage <-  CI[1] < sqrt(8/5) & sqrt(8/5) < CI[2] 
+  miss.left <-  CI[1] > sqrt(8/5) 
+  miss.right <-  CI[2] < sqrt(8/5)
+  c(CI,coverage,miss.left,miss.right) 
+})
+proportion1 <- c(mean(result.standardNormal[3,],na.rm = TRUE),mean(result.standardNormal[4,],na.rm = TRUE),mean(result.standardNormal[5,],na.rm = TRUE))
+
+
+set.seed(2023)
+result.basic <- replicate(1000,expr={
+  x = rchisq(5,df=5)
+  CI <- CI.basic(x,sk)
+  sk.hat <- sk(x)
+  coverage <-  CI[1] < sqrt(8/5) & sqrt(8/5) < CI[2] 
+  miss.left <-  CI[1] > sqrt(8/5)
+  miss.right <-  CI[2] < sqrt(8/5)
+  c(CI,coverage,miss.left,miss.right) 
+})
+proportion2 <- c(mean(result.basic[3,]),mean(result.basic[4,]),mean(result.basic[5,])) 
+
+
+set.seed(2023)
+result.percentile <- replicate(1000,expr={
+  x = rchisq(5,df=5)
+  sk.hat <- sk(x)
+  CI <- CI.percentile(x,sk)
+  coverage <-  CI[1] < sqrt(8/5) & sqrt(8/5) < CI[2] 
+  miss.left <-  CI[1] > sqrt(8/5) 
+  miss.right <-  CI[2] < sqrt(8/5)
+  c(CI,coverage,miss.left,miss.right) 
+})
+proportion3 <-c(mean(result.percentile[3,]),mean(result.percentile[4,]),mean(result.percentile[5,]))
+```
+
+对来自$\chi^2(5)$分布的样本，三种置信区间覆盖情况如下：
+```{r}
+# combine all the results together in a dataframe
+result <- as.data.frame(rbind(proportion1,proportion2,proportion3))
+colnames(result) <- c('  coverage rate  ','  missing left  ','  missing right  ')
+rownames(result) <- c('standard normal','basic','percentile')
+result
+```
+
+可以看出，对于倾斜的分布，三种置信区间的覆盖率都明显小于95%。覆盖率最高的是percentile，其次是standard normal，覆盖率最低的是basic。

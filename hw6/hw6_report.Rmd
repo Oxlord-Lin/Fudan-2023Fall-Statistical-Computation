@@ -1,0 +1,302 @@
+---
+title: "统计计算 Homework-6 报告"
+author: "林子开 21307110161"
+date: "2023年11月"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: 
+      collapsed: false
+      smooth_scroll: false
+      number_sections: true
+---
+
+```{=html}
+<style type="text/css">
+h1.title{
+  font-size: 38px;
+  color: DarkBlue;
+  text-align: center;
+}
+h4.author{
+  font-size: 18px;
+  color: DarkBlue;
+  text-align: center;
+}
+h4.date {
+  font-size: 18px;
+  font-family: "Times New Roman", Times, serif;
+  color: DarkBlue;
+  text-align: center;
+}
+
+</style>
+```
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, cache = TRUE, message = TRUE, fig.align = "center")
+```
+
+
+```{r,warning=FALSE,include=FALSE}
+# 导入所有需要的包，但不进行展示
+library(bootstrap)
+library(boot)
+library(bootstrap)
+library(psych)
+```
+
+# Exercise 7.1
+```{r}
+rm(list=ls())
+n = nrow(law) # 总的样本数量
+y = law$LSAT
+z = law$GPA
+cor.hat = cor(y,z) # 由全部样本估计的相关系数
+print(cor.hat)
+
+# compute the jackknife replicates, leave-one-out estimates
+cor.jack = numeric(n)
+for(i in 1:n){
+  cor.jack[i] = cor(y[-i],z[-i]) # 由n-1个样本估计得到的相关系数
+}
+bias <- (n-1) * (mean(cor.jack) - cor.hat)
+se = sqrt((n-1) * mean((cor.jack-cor.hat)^2))
+# bias
+print(bias)
+# standard error
+print(se)
+```
+
+# Exercise 7.4
+```{r,include=FALSE}
+rm(list=ls())
+```
+首先，我们给出$\lambda$的MLE的推导过程。设$x_i\sim f(x)=\lambda\text{e}^{-\lambda x}$
+似然函数为：
+\[
+\mathcal{L}(x_1,x_2,\cdots,x_n|\lambda) = \prod_{i=1}^{n}\lambda\exp\{-\lambda x_i\}
+= \lambda^n \exp\{-\lambda \sum_{i=1}^{n} x_i\}
+\]
+对数似然函数
+\[
+l(x_1,x_2,\cdots,x_n|\lambda) = \log(\mathcal{L}(x_1,x_2,\cdots,x_n|\lambda)) = n\log\lambda - \lambda \sum_{i=1}^{n} x_i
+\]
+对上式求导，并令其等于零：
+\[
+\frac{\partial l}{\partial \lambda} = \frac{n}{\lambda} - \sum_{i=1}^{n}x_i = 0
+\]
+得到$\lambda = \frac{n}{\sum_{i=1}^{n}x_i}$。
+根据上述结论，定义下述计算$\lambda$的函数
+```{r}
+hazard_rate = function(x){
+  lambda = length(x)/sum(x)
+  return(lambda)
+}
+```
+
+下面是利用bootstrap计算bias和se的过程
+```{r}
+data(aircondit,package = 'boot')
+B = 200
+n = nrow(aircondit)
+lambda.hat = hazard_rate(aircondit) # 根据原始样本计算得到的lambda
+print(lambda.hat)
+
+# bootstrap estimate of lambda
+lambda.bootstrap = numeric(B)
+set.seed(2023)
+for(b in 1:B){
+  index = sample(1:n,size=n,replace = T) # 随机抽取样本的下标
+  mySample = aircondit[index,1]
+  lambda.bootstrap[b] = hazard_rate(mySample)
+}
+
+# bias
+print(bias.lambda <- mean(lambda.bootstrap-lambda.hat))
+# standard error
+print(se.lambda <- sd(lambda.bootstrap))
+```
+
+# Exercise 7.6
+散点图和相关系数矩阵如下：
+```{r}
+rm(list=ls())
+pairs.panels(scor, 
+             pch=20,
+             method = "pearson", # correlation method
+             hist.col = "wheat",
+             density = TRUE,  # show density plots
+             lm = T,
+             ellipses = F # show correlation ellipses,
+)
+```
+可以看出，相关系数的绝对值越接近1的变量，散点图越会集中分布在一条直线附近，线性相关性更明显。
+
+以下是基于bootstrap对相关系数se的估计
+```{r}
+# bootstrap estimate of se
+set.seed(2023)
+se.bootstrap <- function(data){
+  B = 200
+  n = nrow(data)
+  cor.bootstrap = numeric(B)
+  for(b in 1:B){
+    index = sample(1:n,size=n,replace = T)
+    mySample = data[index,]
+    cor.bootstrap[b] = cor(mySample[,1],mySample[,2])
+  }
+  return(sd(cor.bootstrap))
+}
+
+se.cor12 <- se.bootstrap(scor[,c(1,2)])
+se.cor34 <- se.bootstrap(scor[,c(3,4)])
+se.cor35 <- se.bootstrap(scor[,c(3,5)])
+se.cor45 <- se.bootstrap(scor[,c(4,5)])
+print(c(se.cor12,se.cor34,se.cor35,se.cor45))
+```
+# Exercise 7.7 & 7.8
+首先定义计算$\theta$的函数：
+```{r}
+rm(list=ls())
+theta <- function(data){
+  Sigma <- ((n-1)/n) * cov(data) # 协方差矩阵的MLE估计
+  eigen.values = eigen(Sigma)$values # 特征值，降序排列
+  return(eigen.values[1]/sum(eigen.values))
+}
+```
+
+根据所有样本计算$\hat{\theta}$
+```{r}
+set.seed(2023)
+B = 200
+n = nrow(scor)
+theta.hat = theta(scor) # 根据原始样本计算得到的theta.hat
+print(theta.hat)
+```
+
+利用bootstrap估计bias和se
+```{r}
+# bootstrap
+theta.bootstrap = numeric(B)
+for(b in 1:B){
+  index = sample(1:n,size=n,replace = T) # 随机抽取样本的下标
+  mySample = scor[index,]
+  theta.bootstrap[b] = theta(mySample)
+}
+
+# bias
+print(bias.theta.bootstrap <- mean(theta.bootstrap-theta.hat))
+# se
+print(se.theta.bootstrap <- sd(theta.bootstrap))
+```
+
+利用Jackknife估计bias和se
+```{r}
+# jackknife
+# compute the jackknife replicates, leave-one-out estimates
+theta.jack = numeric(n)
+for(i in 1:n){
+  theta.jack[i] = theta(scor[-i,])
+}
+
+# bias
+bias.theta.jackknife <- (n-1) * (mean(theta.jack) - theta.hat)
+print(bias.theta.jackknife)
+# se
+se.theta.jackknife = sqrt((n-1) * mean((theta.jack-theta.hat)^2))
+print(se.theta.jackknife)
+
+```
+
+
+# 证明题
+## 有放回抽样时样本均值的标准差
+由于\[
+x_i \stackrel{iid}{\sim}F_N(X)
+\]
+其中$F_N(X)$是$\{X_1,X_2,\cdots,X_N\}$上的均匀分布。那么有
+\[
+\text{Var}(x_i) = \mathbb{E}[x_i-\mathbb{E}(x_i)] = \frac{1}{N}\sum_{i=1}^{N}(X_i-\bar{X}) = S^2
+\]
+由于$x_i$之间相互独立，则
+\[
+\text{Var}(\bar{x}) = \text{Var}\left(\frac{\sum_{i=1}^{n}x_i}{n}\right) = \frac{1}{n}\text{Var}(x_i) = \frac{1}{n}S^2
+\]
+再由 standard deviation 和 variance 的关系，可以得到：
+\[
+se(\bar{x}) = \sqrt{\text{Var}(\bar{x})} = \sqrt{\frac{1}{n}S^2} = \frac{S}{\sqrt{n}}
+\]
+
+## 无放回抽样时样本均值的标准差
+
+当$n=1$时
+\[
+se(\bar{x}) = se(x_1) = \sqrt{\text{Var}(x_1)} = S = \frac{S}{\sqrt{1}}\left(\frac{N-1}{N-1}\right)^{(1/2)}
+\]
+当$1<n<N$时,我们先证明如下引理：
+\[
+\text{if}\; i\ne j,\, \mathbb{E}[x_ix_j] = \frac{N}{N-1}\bar{X}^2-\frac{1}{N-1}\mathbb{E}[x_i^2]
+\]
+证明：$x_i$可以等概率地从$\{X_1,X_2,\cdots,X_N\}$中进行选择，而$x_j$可以从$\{X_1,X_2,\cdots,X_N\}\setminus \{x_i\}$中等概率地进行选择。因此有
+\begin{align*}
+\mathbb{E}[x_ix_j] &= \frac{1}{N(N-1)}\left[ \sum_{i\ne j}X_iX_j \right] \\
+&= \frac{1}{N(N-1)}\left[ \sum_{i=1}^{N}\sum_{j=1}^{N}X_iX_j -\sum_{i=1}^{N}X_i^2 \right] \\
+&= \frac{1}{N(N-1)}\left[ N^2\bar{X}^2 -N\mathbb{E}[x_i^2] \right] \\
+&=\frac{N}{N-1}\bar{X}^2-\frac{1}{N-1}\mathbb{E}[x_i^2]
+\end{align*}
+引理得证。
+
+进一步，我们有
+\begin{align*}
+\text{Var}(\bar{x}) & = \frac{1}{n^2}\text{Var}(\sum_{i=1}^{n}x_i) \\
+&= \frac{1}{n^2} \sum_{i,j}\text{Cov}(x_i,x_j)
+\end{align*}
+
+当$i=j$时
+\[
+\text{Cov}(x_i,x_i) = \text{Var}(x_i) = \mathbb{E}[x_i^2] - \left(\mathbb{E}[x_i]\right)^2 = 
+\mathbb{E}[x_i^2] - \bar{X}^2
+\]
+
+当$i\ne j$时
+\begin{align*}
+\text{Cov}(x_i,x_j) &= \mathbb{E}[x_ix_j]-\mathbb{E}[x_i]\mathbb{E}[x_j]\\
+&= \frac{N}{N-1}\bar{X}^2-\frac{1}{N-1}\mathbb{E}[x_i^2] - \mathbb{E}[x_i]\mathbb{E}[x_j] \\
+&=\frac{N}{N-1}\bar{X}^2-\frac{1}{N-1}\mathbb{E}[x_i^2] - \bar{X}^2 \\
+&=\frac{1}{N-1}\bar{X}^2 - \frac{1}{N-1}\mathbb{E}[x_i^2]
+\end{align*}
+
+
+因此有
+\begin{align*}
+\text{Var}(\bar{x}) &= \frac{1}{n^2} \sum_{i,j}\text{Cov}(x_i,x_j)\\
+&= \frac{1}{n^2} \left[n \left(\mathbb{E}[x_i^2] - \bar{X}^2\right)-n(n-1)\left(\frac{1}{N-1}\bar{X}^2 - \frac{1}{N-1}\mathbb{E}[x_i^2]\right) \right] \\
+&= \frac{1}{n}\mathbb{E}[x_i^2] - \frac{1}{n}\bar{X}^2 + \frac{n-1}{n(N-1)}\bar{X}^2 - \frac{n-1}{n(N-1)}\mathbb{E}[x_i^2] \\
+&= \frac{N-n}{n(N-1)}\left( \mathbb{E}[x_i^2] - \bar{X}^2 \right) \\
+&= \frac{N-n}{n(N-1)} S^2
+\end{align*}
+
+最终得到
+\[
+se(\bar{x}) = \sqrt{\text{Var}(\bar{x})} = \frac{S}{\sqrt{n}}\left(\frac{N-n}{N-1}\right)^{1/2}\]
+
+## 不相同的Bootstrap样本数量
+记$y_k$是样本$(x_1,x_2,\cdots,x_N)$中取$X_k$的数量，满足$0\le y_k \le N$。
+该问题等价于求方程
+\[
+y_1 + y_2 +\cdots + y_N = N
+\]
+的所有非负整数解的个数。
+
+做变换$z_k = y_k + 1$，则原问题又等价于求方程
+\[
+z_1 + z_2 + \cdots + z_N = 2N
+\]
+所有正整数解的个数。这可以借助组合数学中的隔板模型进行求解：有$2N$个球，排成一排，形成$2N-1$个内部空隙，向这$2N-1$个内部空袭插入$N-1$个隔板，每个空袭最多插一个隔板，那么不同的插入隔板方式为
+\[
+{2N-1 \choose N-1} = \frac{(2N-1)!}{(N-1)!N!}
+\]
+因此，bootstrap不同样本数量为$\frac{(2N-1)!}{(N-1)!N!}$
+
+证毕

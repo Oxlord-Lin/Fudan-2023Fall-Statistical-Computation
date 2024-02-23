@@ -1,0 +1,348 @@
+---
+title: "统计计算 Homework-10 报告"
+author: "林子开 21307110161"
+date: "2023年12月"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: 
+      collapsed: false
+      smooth_scroll: false
+      number_sections: true
+---
+
+```{=html}
+<style type="text/css">
+h1.title{
+  font-size: 38px;
+  color: DarkBlue;
+  text-align: center;
+}
+h4.author{
+  font-size: 18px;
+  color: DarkBlue;
+  text-align: center;
+}
+h4.date {
+  font-size: 18px;
+  font-family: "Times New Roman", Times, serif;
+  color: DarkBlue;
+  text-align: center;
+}
+
+</style>
+```
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, cache = TRUE, message = TRUE, fig.align = "center")
+```
+
+
+```{r,warning=FALSE,include=FALSE}
+# 导入所有需要的包，但不进行展示
+library(coda)
+
+```
+
+# Exercise 9.6
+```{r}
+set.seed(2023)
+
+# use the random walk Metropolis sampler with a uniform proposal chain
+# theta should be within [0,1]
+w <- 0.25  # width of the uniform support set
+m <- 5000  # length of the chain
+burn <- 1000  # burn-in time
+x <- numeric(m)  # the chain
+
+# the following function prob computes the target density
+# (without the constant)
+
+prob <- function(theta,animals){
+  # computes (without the constant) the target density
+  if (theta<0 || theta>1)
+    return(0)
+  ratio <- (1/2 + theta/4)^animals[1] * ((1-theta)/4)^animals[2] *
+            ((1-theta)/4)^animals[3] * (theta/4)^animals[4]
+}
+
+# generate the random walk Metropolis chain
+animals <- c(125, 18, 20, 34)
+u <- runif(m) # for accept/reject step
+v <- runif(m,-w,w)  # proposal distribution
+x[1] <- 0.5
+for (i in 2:m){
+  y <- x[i-1] + v[i]
+  if (u[i]<= prob(y,animals)/prob(x[i-1],animals))
+    x[i] <- y # accept
+  else
+    x[i] <- x[i-1] # reject
+}
+```
+
+The posterior mean of $\theta$ with the burn-in stage discarded is:
+```{r}
+xb <- x[(burn+1):m]
+print(mean(xb))
+```
+
+The following is the posterior distributionof $\theta$ given the observed sample:
+```{r}
+par(mfrow=c(2,1))
+plot(x,type='l',col='royalblue')
+hist(xb,prob=T,breaks = 'scott',xlab=bquote(theta),ylab='X',main='',col='aliceblue')
+z <- seq(min(xb),max(xb),length=1000)
+lines(z,dnorm(z,mean(xb),sd(xb)),col='royalblue')
+abline(v=mean(xb),col='red',lwd=2,lty=3)
+```
+
+# Exercise 9.7
+```{r}
+set.seed(2023)
+
+# initialize constants and parameters
+N <- 5000
+burn <- 1000
+X <- matrix(0,N,2)
+
+rho <- .9
+mu2 <- mu1 <- 0
+sigma2 <- sigma1 <- 1
+s2 <- s1 <- sqrt(1-rho^2)*sigma1
+
+# generate the chain
+X[1,] <- c(mu1,mu2) # initialize
+for ( i in 2:N){
+  x2 <- X[i-1,2]
+  m1 <- mu1 + rho*(x2 - mu2)*sigma1/sigma2
+  X[i,1] <- rnorm(1,m1,s1)
+  x1 <- X[i,1]
+  m2 <- mu2 + rho*(x1 - mu1) * sigma2/sigma1
+  X[i,2] <- rnorm(1,m2,s2)
+}
+```
+
+Plot the generated sample after discardinga suitable burn-in sample:
+```{r}
+b <- burn + 1
+x <- X[b:N,]
+plot(x,main='',cex=.5, xlab=bquote(X[1]),ylab=bquote(X[2]),xlim=range(x[,1]),ylim=range(x[,2]))
+```
+
+Fit a simple linear regression model $Y=\beta_0+\beta_1X$:
+```{r}
+x.dataframe <- as.data.frame(x)
+colnames(x.dataframe) <- c('Y','X')
+model <- lm(Y~.,x.dataframe)
+summary(model)
+```
+
+Finally, check the residuals of the model for normality and constant variance.
+```{r}
+par(mfrow=c(1,2))
+qqnorm(model$residuals)
+qqline(model$residuals,col='red',lwd=2)
+plot(model$fitted.values,model$residuals,main='Residual vs Fitted values')
+```
+
+# Exercise 9.8
+```{r}
+set.seed(2023)
+
+chain <- function(n,a,b,x,y,N){
+
+  X <- matrix(0,N,2) # to store the chain
+
+  # generate the chain
+  X[1,] <- c(1,0.5) # initialize the chain 
+  for (i in 2:N){
+    x2 <- X[i-1,2]
+    X[i,1] <- rbinom(1,n,y)
+    # print(y)
+    x1 <- X[i,1]
+    X[i,2] <- rbeta(1,shape1=x+a, shape2=n-x+b)
+  }
+
+  return(X)
+}
+
+burn <- 1000
+N <- 5000 # length of the chain
+n <- 20
+a <- 10
+b <- 10
+
+X <- chain(n,a,b,x=10,y=0.5,N)
+
+```
+
+Plot the samples generated from the target joint density $f(x,y)$, with burn-in time samples discarded
+```{r}
+Xb <- X[(burn + 1):N,] # drop the burn-in time samples
+
+x <- Xb[,1]
+y <- Xb[,2]
+par(mfrow=c(1,1))
+plot(Xb,cex=.5,type = 'p',xlab=bquote(x),ylab=bquote(y),
+     col='navyblue',main='scatter plot of the joint density f(x,y)')
+```
+
+Plot the chain and histogram of x
+```{r}
+plot(x,type='l',col='royalblue',main='Chain of x')
+hist(x,probability = T,col='gold')
+z <- seq(min(x),max(x),length=1000)
+lines(z,dnorm(z,mean=mean(x),sd=sd(x)))
+```
+
+Plot the chain and histogram of y
+```{r}
+plot(y,type='l',col='royalblue',main='Chain of y')
+hist(y,probability = T,breaks='scott',col='gold')
+z <- seq(min(y),max(y),length=1000)
+lines(z,dnorm(z,mean=mean(y),sd=sd(y)))
+
+par(mfrow=c(1,1))
+```
+
+# Exercise 9.10
+```{r}
+set.seed(233333)
+
+Gelman.Rubin <- function(psi){
+  # psi[i,j] is the statistic psi(X[i,1:j])
+  # for chain in i-th row of X
+  psi <- as.matrix(psi)
+  n <- ncol(psi)
+  k <- nrow(psi)
+  
+  psi.means <- rowMeans(psi) # row means
+  B <- n * var(psi.means)  # between variance est.
+  psi.w <- apply(psi,1,'var') # within est.
+  W <- mean(psi.w) # within est.
+  v.hat <- W*(n-1)/n + (B/n) # upper variance est.
+  r.hat <- v.hat/W # G-R statistic
+  return(r.hat)
+} 
+
+
+
+Rayleigh.chain <- function(sigma=4,N=10000,X1=1){
+  # generates a Metropolis chain for Rayleigh distribution
+  
+  f<-function(x,sigma){
+    # calculate the density of Rayleigh distribution
+    if (any(x<0)) return(0)
+    stopifnot(sigma>0)
+    return( (x/sigma^2) * exp(-x^2/(2*sigma^2)) )
+  }
+  
+  x <- numeric(N)
+  x[1] <- X1
+  u <- runif(N)
+  
+  for(i in 2:N){
+    xt <- x[i-1]
+    y <- rchisq(1, df=xt)
+    num <- f(y,sigma) * dchisq(xt, df=y)
+    den <- f(xt,sigma) * dchisq(y, df=xt)
+    if (u[i] <= num/den) 
+      x[i] <- y 
+    else 
+      x[i] <- xt # y is rejected
+  }
+  return(x)
+}
+
+sigma <- 4 # parameter of Rayleigh distribution
+k <- 4 # number of chains to generate
+n <- 4000 # length of chains
+b <- 1000 # burn-in length
+
+# choose overdispersed initial values
+x0 <- c(5,10,15,20)
+
+# generate the chain
+X <- matrix(0,nrow=k,ncol=n)
+for(i in 1:k)
+  X[i,] <- Rayleigh.chain(sigma,n,x0[i]) # each row is a chain
+
+# compute the diagnostic statistics
+psi <- t(apply(X,1,cumsum))
+for(i in 1:nrow(psi)) 
+  psi[i,] <- psi[i,] / (1:ncol(psi)) # cummulated mean
+print(Gelman.Rubin(psi))
+```
+
+Plot the sequence of $\hat{R}$ with the burn-in time discarded:
+```{r}
+rhat <- rep(0,n)
+find.flag = FALSE
+for(j in (b+1):n){
+  rhat[j] <- Gelman.Rubin(psi[,1:j])
+  if (rhat[j] < 1.2 && !find.flag){
+    k = j # find the index of step where R is less than 1.2 for the first time
+    find.flag = TRUE
+  }
+}
+plot((b+1):n,rhat[(b+1):n],type='l',xlab='step',ylab='R.hat')
+abline(h=1.2,v=k,lty=2,col='red')
+```
+
+And the step of the chain when $\hat{R}<1.2$ for the first time is:
+```{r}
+print(k) 
+```
+
+Use the coda $\texttt{coda}$ package to check for convergence
+```{r}
+# use the coda package to check for the convergence of the chain
+library(coda)
+X.chain.1 <- as.mcmc(X[1,])
+X.chain.2 <- as.mcmc(X[2,])
+X.chain.3 <- as.mcmc(X[3,])
+X.chain.4 <- as.mcmc(X[4,])
+X.chain <- mcmc.list(X.chain.1,X.chain.2,X.chain.3,X.chain.4)
+
+gelman.diag(X.chain)
+
+gelman.plot(X.chain,lwd=2)
+
+```
+
+# Explain why Gibbs sampler is a special case of Metropolis-Hastings algorithm
+Consider the following transition:
+\[
+(x_1^{(t)},\cdots,x_{k-1}^{(t)},x_k^{(t-1)},x_{k+1}^{(t-1)},\cdots, x_d^{(t-1)}) \longrightarrow (x_1^{(t)},\cdots,x_{k-1}^{(t)},x_k^{(t)},x_{k+1}^{(t-1)},\cdots, x_d^{(t-1)})
+\]
+We denote the above transition as 
+\[X\longrightarrow X^*\]
+Furthermore, we define the $(d-1)$ dimensional random vectors:
+\[
+X_{(-k)} = X^*_{(-k)} = (x_1^{(t)},\cdots,x_{k-1}^{(t)},x_{k+1}^{(t-1)},\cdots, x_d^{(t-1)})
+\]
+
+In Gibbs sampler, the **proposal** is
+\[
+g(X^*|X) = f(x_k|X_{(-k)})
+\]
+
+And the **accepted probability** is 
+\begin{align*}
+\alpha(X,X^*) &= \min \left\{ 1, \frac{f(X^*)g(X|X^*)} {f(X)g(X^*|X)} \right\} \\
+
+&= \min \left\{ 1, 
+\frac{f(X^*_{(-k)})f(x_{k}^{(t)}|X_{(-k)}^*) f(x_{k}^{(t-1)}|X_{(-k)}^*) }
+{f(X_{(-k)})f(x_{k}^{(t-1)}|X_{(-k)}) f(x_{k}^{(t)}|X_{(-k)}) }\right\} \\ 
+
+& = 1 
+
+\end{align*}
+The second equation holds because 
+\[
+f(X^*) = f(X^*_{(-k)})f(x_{k}^{(t)}|X_{(-k)}^*), \; 
+f(X)   =f(X_{(-k)}) f(x_{k}^{(t-1)}|X_{(-k)})
+\]
+And the last equation holds because $X_{(-k)} = X^*_{(-k)}$.
+
+Therefore, every candidate is accepted in Gibbs sampler, and Gibbs sampler is a special case of the Metropolis-Hastings sampler.
